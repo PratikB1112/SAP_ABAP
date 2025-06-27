@@ -1,0 +1,734 @@
+*&--------------------------------------------------------------------
+-*
+*& Project : ADM JOINFLEX
+*& Module : FI
+*& Object Name : ZRP_FI_TDS_REGISTER1
+*& Functional Consultant : YASH MATKAR (SAPFI)
+*& Technical Consultant : SUPPORT(PNB)
+*& Development Request : ISDK914862
+*& Transaction Code : ZTDSREPORT
+*&--------------------------------------------------------------------
+-*
+*& Report ZRP_FI_TDS_REGISTER1
+*&--------------------------------------------------------------------
+-*
+*&
+*&--------------------------------------------------------------------
+-*
+REPORT ZRP_FI_TDS_REGISTER1.
+----------------------------------------------------------------------
+INCLUDE ZRP_TDS_TOP.
+*&--------------------------------------------------------------------
+*& Include ZRP_TDS_TOP (Modernized Syntax)
+*&--------------------------------------------------------------------
+TYPE-POOLS: slis, icon.
+* TABLES statement is obsolete - Remove it.
+* TABLES : bseg, bkpf, bset, with_item, t059z, t030, skat, acdoca,
+ lfa1,
+* ztbl_tds, sscrfields, t059d.
+TYPES: BEGIN OF ty_quarter,
+ month_number TYPE bkpf-monat, " I,
+ month_name TYPE char10,
+ quarter TYPE char2,
+ END OF ty_quarter.
+* Data declared here because it's populated/used across F01/Forms
+DATA: lt_quarters TYPE TABLE OF ty_quarter.
+TYPES: BEGIN OF ty_final,
+ select TYPE c,
+ index TYPE i,
+ srnum TYPE i,
+ style TYPE lvc_t_styl,
+ rowid TYPE lvc_s_row-index,
+ zedit TYPE c,
+ period TYPE bkpf-monat,
+ quarter TYPE char2,
+ bukrs TYPE bseg-bukrs,
+ belnr TYPE bseg-belnr,
+ gjahr TYPE bseg-gjahr,
+ budat TYPE bseg-h_budat,
+ lifnr TYPE bseg-lifnr,
+ name1 TYPE lfa1-name1,
+ panno TYPE lfa1-j_1ipanno,
+ xblnr TYPE bkpf-xblnr,
+ bldat TYPE bkpf-bldat,
+ basic TYPE bset-hwbas,
+ cgst TYPE bset-hwste,
+ sgst TYPE bset-hwste,
+ igst TYPE bset-hwste,
+ tot_amt TYPE bset-hwbas,
+ tax_amt TYPE bset-hwbas,
+ tds_amt TYPE with_item-wt_qsshh,
+ tds TYPE t059z-qsatz,
+ tds_sec TYPE t059z-qscod,
+ company TYPE v_t059c-qsrec,
+ tds_gl TYPE t030-konts,
+ gl_desc TYPE skat-txt50,
+ exp_gl TYPE acdoca-racct,
+ exp_gldesc TYPE skat-txt50,
+ zbsr TYPE ztbl_tds-zbsr,
+ zchln_no TYPE ztbl_tds-zchln_no,
+ zchln_date TYPE ztbl_tds-zchln_date,
+ zchln_amt TYPE ztbl_tds-zchln_amt,
+ editable_flag TYPE c LENGTH 1, " Check usage, maybe
+ abap_bool?
+ END OF ty_final.
+" Unused type - removed
+* TYPES: BEGIN OF ty_withitem_temp,
+* bukrs TYPE with_item-bukrs,
+* belnr TYPE with_item-belnr,
+* gjahr TYPE with_item-gjahr,
+* buzei TYPE with_item-buzei,
+* witht TYPE with_item-witht,
+* wt_withcd TYPE t030-komok, " This type T030-KOMOK seems wrong for
+WT_WITHCD (T059P-WT_WITHCD)
+* wt_qbshh TYPE with_item-wt_qbshh,
+* END OF ty_withitem_temp.
+DATA: it_final TYPE TABLE OF ty_final. " Main output table
+DATA: it_final_cp TYPE TABLE OF ty_final. " Copy for comparison in
+ SAVE FORM
+DATA: it_changes TYPE TABLE OF ztbl_tds. " For storing changes before
+ DB update
+DATA: it_fieldcat TYPE slis_t_fieldcat_alv. " ALV Field Catalog
+" Work areas (wa_...) are removed, will use inline DATA()/ASSIGNING
+" Unused tables it_final1, it_final2 removed
+" Redundant it_withitem_temp removed (select directly into
+ it_with_item if needed)
+" gv_edit_mode removed (editability handled by field catalog)
+" lv_quarter needed for select-option - keep for now, but using Data
+ Element is better.
+DATA: lv_quarter TYPE c LENGTH 2.
+----------------------------------------------------------------------
+INCLUDE ZRP_TDS_S01.
+*&--------------------------------------------------------------------
+-*
+*& Include ZRP_TDS_S01 (No significant syntax changes needed)
+*&--------------------------------------------------------------------
+-*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+ SELECT-OPTIONS: s_bukrs FOR bkpf-bukrs DEFAULT '1100' NO-EXTENSION
+ NO INTERVALS,
+ s_period FOR bkpf-monat OBLIGATORY,
+ s_qua FOR lv_quarter, " Consider using a Data
+ Element instead of
+lv_quarter
+ s_year FOR bkpf-gjahr NO-EXTENSION NO INTERVALS
+ OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+----------------------------------------------------------------------
+INCLUDE ZRP_TDS_F01.
+*&--------------------------------------------------------------------
+*& Include ZRP_TDS_F01 (Modernized Syntax)
+*&--------------------------------------------------------------------
+CONSTANTS: lc_ktopl TYPE t030-ktopl VALUE '1100',
+ lc_ktosl_kbs TYPE bseg-ktosl VALUE 'KBS',
+ lc_ktosl_egk TYPE bseg-ktosl VALUE 'EGK',
+ lc_ktosl_jic TYPE bset-ktosl VALUE 'JIC',
+ lc_ktosl_jis TYPE bset-ktosl VALUE 'JIS',
+ lc_ktosl_jii TYPE bset-ktosl VALUE 'JII',
+ lc_ktosl_wit TYPE t030-ktosl VALUE 'WIT',
+ lc_awtyp_bkpf TYPE bkpf-awtyp VALUE 'BKPF',
+ lc_awtyp_rmrp TYPE bkpf-awtyp VALUE 'RMRP'.
+* --- Populate Quarter Data using VALUE ---
+lt_quarters = VALUE #(
+ ( month_number = '01' month_name = 'January' quarter = 'Q4' )
+ ( month_number = '02' month_name = 'February' quarter = 'Q4' )
+ ( month_number = '03' month_name = 'March' quarter = 'Q4' )
+ ( month_number = '04' month_name = 'April' quarter = 'Q1' )
+ ( month_number = '05' month_name = 'May' quarter = 'Q1' )
+ ( month_number = '06' month_name = 'June' quarter = 'Q1' )
+ ( month_number = '07' month_name = 'July' quarter = 'Q2' )
+ ( month_number = '08' month_name = 'August' quarter = 'Q2' )
+ ( month_number = '09' month_name = 'September' quarter = 'Q2' )
+ ( month_number = '10' month_name = 'October' quarter = 'Q3' )
+ ( month_number = '11' month_name = 'November' quarter = 'Q3' )
+ ( month_number = '12' month_name = 'December' quarter = 'Q3' )
+).
+* --- Data Selection ---
+SELECT bukrs, belnr, gjahr, bldat, budat, monat, xblnr, awtyp
+ FROM bkpf
+ INTO TABLE @DATA(lt_bkpf)
+WHERE bukrs IN @s_bukrs
+ AND gjahr IN @s_year
+ AND monat IN @s_period
+ AND awtyp IN (@lc_awtyp_bkpf, @lc_awtyp_rmrp). " Use constants
+IF lt_bkpf IS INITIAL.
+ MESSAGE 'No header records found (BKPF)' TYPE 'S' DISPLAY LIKE 'W'.
+ LEAVE LIST-PROCESSING. " Exit early if no base data
+ENDIF.
+SORT lt_bkpf BY belnr.
+" Consider filtering with WHERE instead of DELETE if performance is an
+ issue
+DELETE lt_bkpf WHERE NOT ( belnr BETWEEN '1000000000' AND '1999999999'
+ OR belnr BETWEEN '5500000000' AND '5599999999').
+IF lt_bkpf IS INITIAL.
+ MESSAGE 'No relevant documents after filtering BKPF' TYPE 'S'
+ DISPLAY LIKE 'W'.
+ LEAVE LIST-PROCESSING. " Exit early if no relevant docs
+ENDIF.
+SELECT bukrs, belnr, gjahr, buzei, hwbas, ktosl, lifnr, txgrp, taxps,
+ docln, awtyp, h_monat, h_budat
+ FROM bseg
+ INTO TABLE @DATA(lt_bseg)
+ FOR ALL ENTRIES IN @lt_bkpf
+WHERE bukrs = @lt_bkpf-bukrs
+ AND belnr = @lt_bkpf-belnr
+ AND gjahr = @lt_bkpf-gjahr
+ AND h_monat = @lt_bkpf-monat
+ AND awtyp = @lt_bkpf-awtyp.
+IF lt_bseg IS INITIAL.
+ MESSAGE 'No item records found (BSEG)' TYPE 'S' DISPLAY LIKE 'W'.
+ " Depending on logic, may not need to exit here, but check
+ subsequent selects
+ENDIF.
+SORT lt_bseg BY belnr buzei.
+" Create temporary BSEG table for vendor determination logic
+DATA(lt_bseg_temp) = lt_bseg.
+DELETE lt_bseg_temp WHERE ktosl NE lc_ktosl_kbs
+ AND ktosl NE lc_ktosl_egk. " Use constants
+SORT lt_bseg_temp BY belnr. " Sort before DELETE is safer if
+ duplicates exist
+DELETE lt_bseg_temp WHERE buzei <> '1'. " Keep only first line item
+ for vendor? Check logic.
+DATA: lt_lfa1 TYPE TABLE OF lfa1,
+ lt_ztbl_tds TYPE TABLE OF ztbl_tds,
+ lt_bset TYPE TABLE OF bset,
+ lt_with_item TYPE TABLE OF with_item,
+ lt_acdoca TYPE TABLE OF acdoca,
+ lt_skat TYPE TABLE OF skat,
+ lt_t059z TYPE TABLE OF t059z,
+ lt_t059d TYPE TABLE OF t059d,
+ lt_t030 TYPE TABLE OF t030,
+ lt_skat1 TYPE TABLE OF skat.
+IF lt_bseg_temp IS NOT INITIAL.
+ SELECT lifnr, name1, j_1ipanno
+ FROM lfa1
+ INTO TABLE @lt_lfa1
+ FOR ALL ENTRIES IN @lt_bseg_temp
+ WHERE lifnr = @lt_bseg_temp-lifnr.
+ENDIF.
+" Select from custom TDS table (uses lt_bkpf)
+SELECT bukrs, belnr, gjahr, zbsr, zchln_no, zchln_date, zchln_amt
+ FROM ztbl_tds
+ INTO TABLE @lt_ztbl_tds
+ FOR ALL ENTRIES IN @lt_bkpf
+WHERE bukrs = @lt_bkpf-bukrs
+ AND belnr = @lt_bkpf-belnr
+ AND gjahr = @lt_bkpf-gjahr.
+IF lt_bseg IS NOT INITIAL.
+ SELECT bukrs, belnr, gjahr, buzei, txgrp, hwbas, hwste, ktosl, taxps
+ FROM bset
+ INTO TABLE @lt_bset
+ FOR ALL ENTRIES IN @lt_bseg
+ WHERE belnr = @lt_bseg-belnr
+ AND bukrs = @lt_bseg-bukrs
+ AND gjahr = @lt_bseg-gjahr
+ AND buzei = @lt_bseg-buzei.
+ SORT lt_bset BY belnr buzei.
+ SELECT bukrs, belnr, gjahr, buzei, witht, wt_withcd, wt_qbshh
+ FROM with_item
+ INTO TABLE @lt_with_item
+ FOR ALL ENTRIES IN @lt_bseg
+ WHERE belnr = @lt_bseg-belnr
+ AND bukrs = @lt_bseg-bukrs
+ AND gjahr = @lt_bseg-gjahr.
+ SORT lt_with_item BY belnr.
+ " Removed duplicate SELECT into it_withitem_temp
+ SELECT rldnr, rbukrs, gjahr, belnr, docln, awitgrp, subta, racct,
+ buzei, budat, ktosl
+ FROM acdoca
+ INTO TABLE @lt_acdoca
+ FOR ALL ENTRIES IN @lt_bseg
+ WHERE rbukrs = @lt_bseg-bukrs
+ AND gjahr = @lt_bseg-gjahr
+ AND belnr = @lt_bseg-belnr.
+ SORT lt_acdoca BY belnr buzei.
+ " Create filtered ACDOCA tables
+ DATA(lt_acdoca_awit) = FILTER #( lt_acdoca WHERE
+ awitgrp IS NOT INITIAL ).
+ DATA(lt_acdoca_subta) = FILTER #( lt_acdoca WHERE
+ subta IS NOT INITIAL ).
+ IF lt_acdoca IS NOT INITIAL.
+ " Select G/L descriptions
+ SELECT spras, ktopl, saknr, txt50
+ FROM skat
+ INTO TABLE @lt_skat
+ FOR ALL ENTRIES IN @lt_acdoca
+ WHERE spras = @sy-langu
+ AND ktopl = @lc_ktopl " Use constant
+ AND saknr = @lt_acdoca-racct.
+ ENDIF.
+ IF lt_with_item IS NOT INITIAL.
+ " Select TDS rate/section info
+ SELECT land1, witht, wt_withcd, qscod, qsatz
+ FROM t059z
+ INTO TABLE @lt_t059z
+ FOR ALL ENTRIES IN @lt_with_item
+ WHERE wt_withcd = @lt_with_item-wt_withcd. " Ensure key matches
+ " Select Company/Non-Company text
+ SELECT spras, land1, witht, qsrec, rctxt
+ FROM t059d
+ INTO TABLE @lt_t059d
+ FOR ALL ENTRIES IN @lt_with_item
+ WHERE spras = @sy-langu
+ AND witht = @lt_with_item-witht. " Key is WITHT in T059D
+ " Select TDS G/L mapping (using WITH_ITEM as driver)
+ SELECT ktopl, ktosl, bwmod, komok, bklas, konts
+ FROM t030
+ INTO TABLE @lt_t030
+ FOR ALL ENTRIES IN @lt_with_item " Use WITH_ITEM directly
+ WHERE ktopl = @lc_ktopl " Use constant
+ AND ktosl = @lc_ktosl_wit " Use constant
+ AND komok = @lt_with_item-wt_withcd. " Match key
+ IF lt_t030 IS NOT INITIAL.
+ " Create unique list of G/L accounts for SKAT lookup
+ DATA(lt_t030_temp) = lt_t030.
+ SORT lt_t030_temp BY konts.
+ DELETE ADJACENT DUPLICATES FROM lt_t030_temp COMPARING konts.
+ " Select descriptions for unique TDS G/L accounts
+ SELECT spras, ktopl, saknr, txt50
+ FROM skat
+ INTO TABLE @lt_skat1
+ FOR ALL ENTRIES IN @lt_t030_temp
+ WHERE spras = @sy-langu
+ AND ktopl = @lc_ktopl " Use constant
+ AND saknr = @lt_t030_temp-konts.
+ ENDIF. " lt_t030 initial
+ ENDIF. " lt_with_item initial
+ENDIF. " lt_bseg initial
+* --- Main Processing Logic ---
+LOOP AT lt_bkpf INTO DATA(ls_bkpf).
+ " Determine Quarter based on Posting Date using table expression
+ DATA(ls_quarter) = VALUE ty_quarter( ). " Initialize
+ TRY.
+ ls_quarter = lt_quarters[ month_number = ls_bkpf-monat ].
+ CATCH cx_sy_itab_line_not_found.
+ " Handle error - month not found in quarter table? Should not
+ happen if lt_quarters is complete.
+ MESSAGE |Invalid month { ls_bkpf-monat }
+ found for document { ls_bkpf-belnr }| TYPE 'W'.
+ CONTINUE. " Skip document if quarter cannot be determined
+ ENDTRY.
+ LOOP AT lt_bseg INTO DATA(ls_bseg) WHERE bukrs = ls_bkpf-bukrs
+ AND belnr = ls_bkpf-belnr
+AND gjahr = ls_bkpf-gjahr.
+ " Skip if not relevant tax code (GST?)
+ IF ls_bseg-ktosl <> lc_ktosl_jic
+ AND ls_bseg-ktosl <> lc_ktosl_jii. " Use constants
+ CONTINUE.
+ ENDIF.
+ DATA(ls_final) = VALUE ty_final( " Initialize
+ output structure inline
+ period = ls_bkpf-monat
+ quarter = ls_quarter-quarter
+ xblnr = ls_bkpf-xblnr
+ bldat = ls_bkpf-bldat
+ belnr = ls_bseg-belnr
+ budat = ls_bseg-h_budat
+ bukrs = ls_bseg-bukrs
+ gjahr = ls_bseg-gjahr
+ basic = ls_bseg-hwbas " Initial basic amount from BSEG? Check
+ logic. BSET loop overrides.
+ ).
+ " Read custom TDS table data using Table Expression
+ TRY.
+ DATA(ls_ztbl_tds) = lt_ztbl_tds[ belnr = ls_bkpf-belnr
+ bukrs = ls_bkpf-bukrs
+ " Add BUKRS/GJAHR? Key depends on table definition
+ gjahr = ls_bkpf-gjahr ].
+ ls_final-zbsr = ls_ztbl_tds-zbsr.
+ ls_final-zchln_no = ls_ztbl_tds-zchln_no.
+ ls_final-zchln_date = ls_ztbl_tds-zchln_date.
+ ls_final-zchln_amt = ls_ztbl_tds-zchln_amt.
+ CATCH cx_sy_itab_line_not_found.
+ " Custom TDS data not found - fields remain initial
+ ENDTRY.
+ " Read Vendor data using temporary BSEG table
+ TRY.
+ DATA(ls_bseg_temp) = lt_bseg_temp[ belnr = ls_bseg-belnr ].
+ " Assumes unique per BELNR
+ ls_final-lifnr = ls_bseg_temp-lifnr.
+ SHIFT ls_final-lifnr LEFT DELETING LEADING '0'.
+ TRY. " Nested TRY for dependent read
+ DATA(ls_lfa1) = lt_lfa1[ lifnr = ls_bseg_temp-lifnr ].
+ ls_final-name1 = ls_lfa1-name1.
+ ls_final-panno = ls_lfa1-j_1ipanno.
+ CATCH cx_sy_itab_line_not_found.
+ " Vendor master data not found
+ ENDTRY.
+ CATCH cx_sy_itab_line_not_found.
+ " Temp BSEG line for vendor not found
+ ENDTRY.
+ " Read Expense G/L based on document number range and ACDOCA
+ filters
+ TRY.
+ IF ls_bseg-belnr BETWEEN '1000000000' AND '1999999999'.
+ DATA(ls_acdoca_subta) =
+ lt_acdoca_subta[ belnr = ls_bseg-belnr
+ rbukrs = ls_bseg-bukrs
+ " Add BUKRS/GJAHR to key?
+ gjahr = ls_bseg-gjahr
+ subta = ls_bseg-taxps ].
+ ls_final-exp_gl = ls_acdoca_subta-racct.
+ ELSEIF ls_bseg-belnr BETWEEN '5500000000' AND '5599999999'.
+ DATA(ls_acdoca_awit) =
+ lt_acdoca_awit[ belnr = ls_bseg-belnr
+ rbukrs = ls_bseg-bukrs " Add
+BUKRS/GJAHR to key?
+ gjahr = ls_bseg-gjahr
+ awitgrp = ls_bseg-taxps ].
+ ls_final-exp_gl = ls_acdoca_awit-racct.
+ ELSE.
+ " Document number range not covered? Clear G/L?
+ CLEAR ls_final-exp_gl.
+ ENDIF.
+ IF ls_final-exp_gl IS NOT INITIAL.
+ SHIFT ls_final-exp_gl LEFT DELETING LEADING '0'.
+ TRY. " Nested TRY for G/L description
+ DATA(ls_skat) = lt_skat[ saknr = ls_final-exp_gl ].
+ " Assumes unique per SAKNR
+ ls_final-exp_gldesc = ls_skat-txt50.
+ CATCH cx_sy_itab_line_not_found.
+ " G/L description not found
+ CLEAR ls_final-exp_gldesc.
+ ENDTRY.
+ ENDIF.
+ CATCH cx_sy_itab_line_not_found.
+ " Relevant ACDOCA line not found
+ CLEAR: ls_final-exp_gl, ls_final-exp_gldesc.
+ ENDTRY.
+ " Process Tax amounts (BSET) - Reset amounts before loop
+ CLEAR: ls_final-cgst, ls_final-sgst,
+ ls_final-igst, ls_final-basic.
+ LOOP AT lt_bset INTO DATA(ls_bset) WHERE bukrs = ls_bseg-bukrs
+ AND belnr = ls_bseg-belnr
+AND gjahr = ls_bseg-gjahr
+AND txgrp = ls_bseg-txgrp.
+ " Matching tax group?
+ CASE ls_bset-ktosl.
+ WHEN lc_ktosl_jic.
+ ls_final-cgst += ls_bset-hwste. " Use +=
+ ls_final-basic = ls_bset-hwbas. " Overwrites basic? Last one
+ wins? Check logic.
+ WHEN lc_ktosl_jis.
+ ls_final-sgst += ls_bset-hwste. " Use +=
+ ls_final-basic = ls_bset-hwbas. " Overwrites basic? Last one
+ wins? Check logic.
+ WHEN lc_ktosl_jii.
+ ls_final-igst += ls_bset-hwste. " Use +=
+ ls_final-basic = ls_bset-hwbas. " Overwrites basic? Last one
+ wins? Check logic.
+ ENDCASE.
+ ENDLOOP. " AT lt_bset
+ " Calculate totals based on accumulated taxes
+ ls_final-tot_amt = ls_final-basic + ls_final-cgst +
+ ls_final-sgst + ls_final-igst.
+ ls_final-tax_amt = ls_final-basic. " Taxable amount IS the basic
+ amount? Check logic.
+ " Process Withholding Tax (WITH_ITEM)
+ LOOP AT lt_with_item INTO DATA(ls_with_item)
+ WHERE bukrs = ls_bseg-bukrs
+ AND belnr = ls_bseg-belnr
+ AND gjahr = ls_bseg-gjahr
+ AND wt_withcd IS NOT INITIAL.
+ " Check for non-initial WT Code
+ DATA(lv_tds_rate) = CONV t059z-qsatz( 0 ). " Initialize rate
+ IF ls_with_item-wt_qbshh IS NOT INITIAL. " If WT Base amount
+ exists in WITH_ITEM
+ TRY. " Read TDS Rate/Section
+ DATA(ls_t059z) = lt_t059z[
+ wt_withcd = ls_with_item-wt_withcd ].
+ " Ensure key is correct
+ ls_final-tds = ls_t059z-qsatz.
+ ls_final-tds_sec = ls_t059z-qscod.
+ lv_tds_rate = ls_t059z-qsatz.
+ CATCH cx_sy_itab_line_not_found.
+ " TDS config not found for WT Code
+ ENDTRY.
+ ELSE.
+ CONTINUE. " Skip if no WT base amount in WITH_ITEM? Check
+ logic.
+ ENDIF.
+ " Calculate TDS amount based on BSET base amount (Check this
+ logic carefully)
+ DATA(lv_base_for_tds) = CONV bset-hwbas( 0 ).
+ TRY.
+ IF ls_bseg-belnr BETWEEN '1000000000' AND '1999999999'.
+ " Reading BSET again here? ls_final-basic should hold the
+ value from previous loop.
+ DATA(ls_bset_tds) = lt_bset[
+ belnr = ls_bseg-belnr
+ bukrs = ls_bseg-bukrs
+gjahr = ls_bseg-gjahr
+txgrp = ls_bseg-txgrp
+ktosl = ls_bseg-ktosl ].
+ " Needs specific key
+ lv_base_for_tds = ls_bset_tds-hwbas.
+ ELSEIF ls_bseg-belnr BETWEEN '5500000000' AND '5599999999'.
+ DATA(ls_bset_tds2) = lt_bset[
+ belnr = ls_bseg-belnr
+bukrs = ls_bseg-bukrs
+gjahr = ls_bseg-gjahr
+txgrp = ls_bseg-txgrp
+ktosl = ls_bseg-ktosl ].
+ " Needs specific key
+ lv_base_for_tds = ls_bset_tds2-hwbas.
+ ENDIF.
+ CATCH cx_sy_itab_line_not_found.
+ " BSET line not found for TDS base calculation? Use
+ ls_final-basic?
+ lv_base_for_tds = ls_final-basic. " Fallback? Check logic.
+ ENDTRY.
+ " Calculate TDS amount if rate is found
+ IF lv_tds_rate IS NOT INITIAL.
+ ls_final-tds_amt = ( lv_base_for_tds * lv_tds_rate ) / 100.
+ ENDIF.
+ " Read Company/Non-Company Text
+ TRY.
+ DATA(ls_t059d) = lt_t059d[ witht = ls_with_item-witht ].
+ " Key is WITHT
+ ls_final-company = ls_t059d-qsrec.
+ CATCH cx_sy_itab_line_not_found.
+ " T059D config not found
+ ENDTRY.
+ " Read TDS G/L and Description
+ TRY.
+ DATA(ls_t030) = lt_t030[ komok = ls_with_item-wt_withcd ].
+ " Key is KOMOK
+ ls_final-tds_gl = ls_t030-konts.
+ SHIFT ls_final-tds_gl LEFT DELETING LEADING '0'.
+ TRY. " Nested TRY for G/L description
+ DATA(ls_skat1) = lt_skat1[ saknr = ls_t030-konts ].
+ " Assumes unique per SAKNR
+ ls_final-gl_desc = ls_skat1-txt50.
+ CATCH cx_sy_itab_line_not_found.
+ " SKAT1 description not found
+ CLEAR ls_final-gl_desc.
+ ENDTRY.
+ CATCH cx_sy_itab_line_not_found.
+ " T030 mapping not found
+ CLEAR ls_final-tds_gl.
+ ENDTRY.
+ ENDLOOP. " AT lt_with_item
+ " Append result only if TDS amount was calculated (original logic)
+ IF ls_final-tds_amt IS NOT INITIAL.
+ PERFORM set_style CHANGING ls_final. " Call FORM to set style
+ for the row
+ APPEND ls_final TO it_final.
+ ENDIF.
+ " No explicit CLEAR needed for ls_final, ls_bseg, ls_bseg_temp,
+ ls_lfa1 etc. - scope ends
+ ENDLOOP. " AT lt_bseg
+ " No explicit CLEAR needed for ls_bkpf, ls_quarter - scope ends
+ENDLOOP. " AT lt_bkpf
+IF it_final IS INITIAL.
+ MESSAGE 'No Records Found matching criteria after processing' TYPE
+ 'S' DISPLAY LIKE 'E'. " Use E/W for no data
+ LEAVE LIST-PROCESSING.
+ENDIF.
+" Removed LOOP AT it_final to call set_style - now called before
+APPEND
+* --- Build Field Catalog (using VALUE constructor) ---
+it_fieldcat = VALUE #(
+ ( fieldname = 'PERIOD' seltext_m = 'Month/Period' col_pos = 1 )
+ ( fieldname = 'QUARTER' seltext_m = 'Quarter' col_pos = 2 )
+ ( fieldname = 'BELNR' seltext_m = 'FI Document No.' col_pos = 3 )
+ ( fieldname = 'BUDAT' seltext_m = 'Posting Date' col_pos = 4 )
+ ( fieldname = 'LIFNR' seltext_m = 'Supplier Code' col_pos = 5 )
+ ( fieldname = 'NAME1' seltext_m = 'Supplier Name' col_pos = 6 )
+ ( fieldname = 'PANNO' seltext_m = 'PAN Number' col_pos = 7 )
+ ( fieldname = 'XBLNR' seltext_m = 'Invoice No.' col_pos = 8 )
+ ( fieldname = 'BLDAT' seltext_m = 'Invoice Date' col_pos = 9 )
+ ( fieldname = 'BASIC' seltext_m = 'Basic' col_pos = 10 )
+ ( fieldname = 'CGST' seltext_m = 'CGST' col_pos = 11 )
+ ( fieldname = 'SGST' seltext_m = 'SGST' col_pos = 12 )
+ ( fieldname = 'IGST' seltext_m = 'IGST' col_pos = 13 )
+ ( fieldname = 'TOT_AMT' seltext_m = 'Total Inv Amt' col_pos = 14 )
+ ( fieldname = 'TAX_AMT' seltext_m = 'Taxable Amt' col_pos = 15 )
+ ( fieldname = 'TDS_AMT' seltext_m = 'TDS Amt' col_pos = 16 )
+ ( fieldname = 'TDS' seltext_m = 'TDS %' col_pos = 17 )
+ ( fieldname = 'TDS_SEC' seltext_m = 'TDS Section' col_pos = 18 )
+ ( fieldname = 'COMPANY' seltext_m = 'Comp/non comp' col_pos = 19 )
+ ( fieldname = 'TDS_GL' seltext_m = 'TDS GL Code' col_pos = 20 )
+ ( fieldname = 'GL_DESC' seltext_m = 'TDS GL Desc' col_pos = 21 )
+ ( fieldname = 'EXP_GL' seltext_m = 'Offset/Exp GL' col_pos = 22 )
+ ( fieldname = 'EXP_GLDESC' seltext_m = 'Off/ExpGLDes' col_pos = 23 )
+ ( fieldname = 'ZBSR' seltext_m = 'BSR Code' edit = abap_true
+ col_pos = 24 ) " Edit flag
+ ( fieldname = 'ZCHLN_NO' seltext_m = 'TDS Challan No.'
+ edit = abap_true col_pos = 25 ) " Edit flag
+ ( fieldname = 'ZCHLN_DATE' seltext_m = 'TDS Challan Date'
+ edit = abap_true col_pos = 26 ) " Edit flag
+ ( fieldname = 'ZCHLN_AMT' seltext_m = 'TDS Challan Amt'
+ edit = abap_true col_pos = 27 ) " Edit flag
+).
+* --- Display ALV Grid ---
+it_final_cp = it_final. " Create copy *before* ALV display for
+ comparison later
+DATA(ls_layout) = VALUE slis_layout_alv( zebra = abap_true ).
+" Inline layout declaration
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+ EXPORTING
+ i_callback_program = sy-repid
+ i_callback_pf_status_set = 'SET_PF_STATUS'
+ i_callback_top_of_page = 'TOP_OF_PAGE'
+ i_callback_user_command = 'USER_COMMAND'
+ is_layout = ls_layout " Use inline declared
+ layout
+ it_fieldcat = it_fieldcat
+ i_default = abap_true " Use abap_true/false
+ i_save = 'A' " Keep 'A' or use specific
+ variant logic
+ TABLES
+ t_outtab = it_final " Display main table
+ EXCEPTIONS
+ program_error = 1
+ OTHERS = 2.
+IF sy-subrc <> 0.
+ MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+ WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+ENDIF.
+*&--------------------------------------------------------------------
+*& Form SET_PF_STATUS (Modernized Syntax within FORM)
+*&--------------------------------------------------------------------
+FORM set_pf_status USING extab TYPE slis_t_extab. "#EC CALLED
+ SET PF-STATUS 'STANDARD'. " Assuming 'STANDARD' is a custom status
+ with save etc.
+ENDFORM.
+*&--------------------------------------------------------------------
+*& Form USER_COMMAND (Modernized Syntax within FORM)
+*&--------------------------------------------------------------------
+FORM user_command USING p_ucomm TYPE sy-ucomm "#EC CALLED
+ p_selfield TYPE slis_selfield. "#EC NEEDED
+ CASE p_ucomm.
+ WHEN '&DATA_SAVE'. " Standard ALV Save Function Code? Or custom?
+ PERFORM f_save_data.
+* Add other custom commands here
+* WHEN 'MY_COMMAND'.
+* ...
+ ENDCASE.
+ " Refresh ALV grid to reflect changes and potentially update styles
+ p_selfield-refresh = abap_true.
+ " Keep row/col stability if needed after commands
+ " p_selfield-row_stable = abap_true.
+ " p_selfield-col_stable = abap_true.
+ENDFORM.
+*&--------------------------------------------------------------------
+*& Form F_SAVE_DATA (Modernized Syntax within FORM)
+*&--------------------------------------------------------------------
+FORM f_save_data. "#EC CALLED
+ CLEAR it_changes. " Clear changes table before collecting
+ LOOP AT it_final ASSIGNING FIELD-SYMBOL(<fs_final>).
+ TRY.
+ " Read corresponding original row using table expression
+ DATA(ls_final_cp) = it_final_cp[
+ KEY index COMPONENTS belnr = <fs_final>-belnr
+ bukrs = <fs_final>-bukrs
+" Use appropriate key fields
+ gjahr = <fs_final>-gjahr ].
+ " Compare relevant editable fields
+ IF <fs_final>-zbsr <> ls_final_cp-zbsr OR
+ <fs_final>-zchln_no <> ls_final_cp-zchln_no OR
+ <fs_final>-zchln_date <> ls_final_cp-zchln_date OR
+ <fs_final>-zchln_amt <> ls_final_cp-zchln_amt.
+ " Collect changes for potential bulk update or logging
+ APPEND VALUE #( CORRESPONDING
+ #( <fs_final> MAPPING FROM ENTITY ) ) TO it_changes.
+ " Modify the Z table directly (row by row)
+ MODIFY ztbl_tds FROM @( VALUE #(
+ CORRESPONDING ztbl_tds( <fs_final> ) ) ).
+ IF sy-subrc = 0.
+ " Successfully updated
+ " Optional: Update style to non-editable after save?
+ Refresh needed.
+ ELSE.
+ " Handle update error
+ MESSAGE |Error updating ZTBL_TDS for
+ { <fs_final>-belnr }| TYPE 'E'.
+ " Potentially stop processing or collect errors
+ ENDIF.
+ ENDIF.
+ CATCH cx_sy_itab_line_not_found.
+ " Original line not found in copy? Should not happen if index
+ is stable.
+ MESSAGE |Error finding original data for document
+ { <fs_final>-belnr }| TYPE 'W'.
+ ENDTRY.
+ ENDLOOP.
+ IF it_changes IS NOT INITIAL.
+ MESSAGE |{ lines( it_changes ) }
+ record(s) saved successfully.| TYPE 'S'.
+ " Update the comparison table after successful save so subsequent
+ saves only save new changes
+ it_final_cp = it_final.
+ ELSE.
+ MESSAGE 'No changes detected to save.' TYPE 'I'.
+ ENDIF.
+ENDFORM.
+*&--------------------------------------------------------------------
+-*
+*& Form TOP_OF_PAGE (Modernized Syntax within FORM)
+*&--------------------------------------------------------------------
+-*
+FORM top_of_page. "#EC CALLED
+ DATA(lv_lines) = lines( it_final ). " Inline declaration
+ " ALV Header using VALUE and String Templates
+ DATA(lt_header) = VALUE slis_t_listheader(
+ ( typ = 'H' info = 'TDS Register Report' ) " Use appropriate TEXT-
+ xxx element
+ ( typ = 'S' key = 'Run Date:' info = |{ sy-datum DATE = USER }| )
+ ( typ = 'S' key = 'User:' info = |{ sy-uname }| )
+ ( typ = 'S' key = 'Company:' info = |{ s_bukrs-low }| )
+ " Example: Display company code
+ ( typ = 'S' key = 'Year:' info = |{ s_year-low }| )
+ " Example: Display year
+ ( typ = 'S' key = 'Records:' info = |{ lv_lines }| )
+ ).
+ CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
+ EXPORTING
+ it_list_commentary = lt_header.
+ENDFORM.
+*&--------------------------------------------------------------------
+*& Form SET_STYLE (Modernized Syntax within FORM)
+*&--------------------------------------------------------------------
+FORM set_style CHANGING cs_final TYPE ty_final. "#EC CALLED
+ " Helper function for adding styles
+ TYPES: BEGIN OF ty_style_helper,
+ fieldname TYPE lvc_fname,
+ value TYPE any, " Field value to check
+ style TYPE lvc_style, " Style if field has value
+ no_style TYPE lvc_style, " Style if field is initial
+ END OF ty_style_helper.
+ DATA(lt_fields_to_style) = VALUE ty_style_helper[](
+ ( fieldname = 'ZBSR' value = cs_final-zbsr
+ style = cl_gui_alv_grid=>mc_style_disabled
+ no_style = cl_gui_alv_grid=>mc_style_enabled )
+ ( fieldname = 'ZCHLN_NO' value = cs_final-zchln_no
+ style = cl_gui_alv_grid=>mc_style_disabled
+ no_style = cl_gui_alv_grid=>mc_style_enabled )
+ ( fieldname = 'ZCHLN_DATE' value = cs_final-zchln_date
+ style = cl_gui_alv_grid=>mc_style_disabled
+ no_style = cl_gui_alv_grid=>mc_style_enabled )
+ ( fieldname = 'ZCHLN_AMT' value = cs_final-zchln_amt
+ style = cl_gui_alv_grid=>mc_style_disabled
+ no_style = cl_gui_alv_grid=>mc_style_enabled )
+ ).
+ CLEAR cs_final-style[]. " Clear existing styles for the row
+ LOOP AT lt_fields_to_style ASSIGNING FIELD-SYMBOL(<fs_style_info>).
+ DATA(lv_style_to_apply) =
+ COND #( WHEN <fs_style_info>-value IS NOT INITIAL
+ THEN <fs_style_info>-style
+ ELSE <fs_style_info>-no_style ).
+ INSERT VALUE #( fieldname =
+ <fs_style_info>-fieldname style = lv_style_to_apply )
+ INTO TABLE cs_final-style.
+ ENDLOOP.
+ENDFORM.
+* Removed unused DATA declarations found at the end of the original
+code.
+* data : wa_excl type ui_func,
+* wa_btns type stb_button,
+* wa_styl type lvc_s_styl.
+* data : it_excl like table of wa_excl,
+* it_btns like table of wa_btns,
+* it_styl like table of wa_styl.
+----------------------------------------------------------------------
