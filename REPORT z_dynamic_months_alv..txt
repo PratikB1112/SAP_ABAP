@@ -1,0 +1,186 @@
+REPORT z_dynamic_months_alv.
+
+* Selection Screen
+PARAMETERS: p_start TYPE dats OBLIGATORY, " Start date
+            p_end   TYPE dats OBLIGATORY. " End date
+
+* Data Declarations
+TYPES: BEGIN OF ty_output,
+         id TYPE char10, " Example field (e.g., record ID)
+       END OF ty_output.
+
+DATA: gt_output      TYPE TABLE OF ty_output,
+      gt_fieldcat    TYPE slis_t_fieldcat_alv, " Field catalog for ALV
+      gs_layout      TYPE slis_layout_alv,
+      lv_months      TYPE i,
+      lv_start_date  TYPE dats,
+      lv_end_date    TYPE dats.
+
+* Start of Selection
+START-OF-SELECTION.
+  PERFORM calculate_months.
+  PERFORM create_dynamic_table.
+  PERFORM populate_data.
+  PERFORM display_alv.
+
+* Subroutines
+FORM calculate_months.
+  DATA: lv_start_year  TYPE i,
+        lv_start_month TYPE i,
+        lv_end_year    TYPE i,
+        lv_end_month   TYPE i.
+
+  lv_start_date = p_start.
+  lv_end_date = p_end.
+
+  " Extract year and month
+  lv_start_year  = p_start+0(4).
+  lv_start_month = p_start+4(2).
+  lv_end_year    = p_end+0(4).
+  lv_end_month   = p_end+4(2).
+
+  " Calculate total months
+  lv_months = ( lv_end_year - lv_start_year ) * 12 + lv_end_month - lv_start_month + 1.
+
+  IF lv_months <= 0.
+    MESSAGE 'End date must be after start date' TYPE 'E'.
+  ENDIF.
+ENDFORM.
+
+FORM create_dynamic_table.
+  DATA: lr_structdescr TYPE REF TO cl_abap_structdescr,
+        lr_tabledescr  TYPE REF TO cl_abap_tabledescr,
+        lr_datadescr   TYPE REF TO cl_abap_datadescr,
+        lt_components  TYPE abap_component_tab,
+        ls_component   TYPE abap_componentdescr,
+        lr_data        TYPE REF TO data,
+        lv_fieldname   TYPE lvc_fname,
+        lv_month       TYPE i,
+        lv_year        TYPE i,
+        lv_current_date TYPE dats.
+
+  " Add static field (e.g., ID)
+  CLEAR ls_component.
+  ls_component-name = 'ID'.
+  ls_component-type ?= cl_abap_elemdescr=>get_c( p_length = 10 ).
+  APPEND ls_component TO lt_components.
+
+  " Add dynamic month columns
+  lv_current_date = p_start.
+  DO lv_months TIMES.
+    lv_month = lv_current_date+4(2).
+    lv_year  = lv_current_date+0(4).
+    lv_fieldname = |MONTH_{ lv_year }{ lv_month }|. " e.g., MONTH_202501
+    CLEAR ls_component.
+    ls_component-name = lv_fieldname.
+    ls_component-type ?= cl_abap_elemdescr=>get_i( ). " Integer for sample data
+    APPEND ls_component TO lt_components.
+
+    " Move to next month
+    CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+      EXPORTING
+        months  = 1
+        olddate = lv_current_date
+      IMPORTING
+        newdate = lv_current_date.
+  ENDDO.
+
+  " Create dynamic structure
+  lr_structdescr = cl_abap_structdescr=>create( lt_components ).
+  lr_tabledescr = cl_abap_tabledescr=>create( lr_structdescr ).
+
+  " Create dynamic internal table
+  CREATE DATA lr_data TYPE HANDLE lr_tabledescr.
+  ASSIGN lr_data->* TO FIELD-SYMBOL(<lt_table>).
+
+  " Assign to global table
+  gt_output = <lt_table>.
+
+  " Build field catalog for ALV
+  CLEAR gt_fieldcat.
+  DATA: ls_fieldcat TYPE slis_fieldcat_alv.
+  ls_fieldcat-fieldname = 'ID'.
+  ls_fieldcat-seltext_l = 'Record ID'.
+  ls_fieldcat-datatype = 'CHAR'.
+  ls_fieldcat-outputlen = 10.
+  APPEND ls_fieldcat TO gt_fieldcat.
+
+  " Dynamic columns for months
+  lv_current_date = p_start.
+  DO lv_months TIMES.
+    lv_month = lv_current_date+4(2).
+    lv_year  = lv_current_date+0(4).
+    lv_fieldname = |MONTH_{ lv_year }{ lv_month }|.
+    CLEAR ls_fieldcat.
+    ls_fieldcat-fieldname = lv_fieldname.
+    ls_fieldcat-seltext_l = |{ lv_year }-{ lv_month }|.
+    ls_fieldcat-datatype = 'INT4'. " Integer type for sample data
+    ls_fieldcat-outputlen = 10.
+    APPEND ls_fieldcat TO gt_fieldcat.
+
+    CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+      EXPORTING
+        months  = 1
+        olddate = lv_current_date
+      IMPORTING
+        newdate = lv_current_date.
+  ENDDO.
+ENDFORM.
+
+FORM populate_data.
+  FIELD-SYMBOLS: <lt_table> TYPE ANY TABLE,
+                 <ls_row>   TYPE ANY,
+                 <lv_field> TYPE ANY.
+
+  DATA: lv_current_date TYPE dats,
+        lv_fieldname    TYPE lvc_fname,
+        lv_month        TYPE i,
+        lv_year         TYPE i.
+
+  ASSIGN gt_output TO <lt_table>.
+
+  " Add sample data (e.g., 3 records)
+  DO 3 TIMES.
+    APPEND INITIAL LINE TO <lt_table> ASSIGNING <ls_row>.
+    ASSIGN COMPONENT 'ID' OF STRUCTURE <ls_row> TO <lv_field>.
+    <lv_field> = |ID_{ sy-index }|.
+
+    " Fill month columns with sample data (e.g., random numbers)
+    lv_current_date = p_start.
+    DO lv_months TIMES.
+      lv_month = lv_current_date+4(2).
+      lv_year  = lv_current_date+0(4).
+      lv_fieldname = |MONTH_{ lv_year }{ lv_month }|.
+      ASSIGN COMPONENT lv_fieldname OF STRUCTURE <ls_row> TO <lv_field>.
+      <lv_field> = sy-index * 10 + lv_month. " Sample data
+
+      CALL FUNCTION 'RE_ADD_MONTH_TO_DATE'
+        EXPORTING
+          months  = 1
+          olddate = lv_current_date
+        IMPORTING
+          newdate = lv_current_date.
+    ENDDO.
+  ENDDO.
+ENDFORM.
+
+FORM display_alv.
+  " Set layout options
+  gs_layout-colwidth_optimize = 'X'.
+  gs_layout-zebra = 'X'.
+
+  " Call REUSE_ALV_GRID_DISPLAY
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+      is_layout          = gs_layout
+      it_fieldcat        = gt_fieldcat
+    TABLES
+      t_outtab           = gt_output
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+  IF sy-subrc <> 0.
+    MESSAGE 'Error displaying ALV' TYPE 'E'.
+  ENDIF.
+ENDFORM.
